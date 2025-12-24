@@ -1,12 +1,16 @@
 
 import React from 'react';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
+import { ConnectedGate } from '../components/ConnectedGate';
+import { MyTokenPanel } from '../components/MyTokenPanel';
 
 export default function Home() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '50px' }}>
-      <h1>지갑 연결 테스트</h1>
-      <ConnectButton />
+    <div style={{ maxWidth: 960, margin:'40px auto', padding:'0 16px' }}>
+      <h1 style={{ textAlign:'center' }}>지갑 연결 / MyToken</h1>
+      <ConnectedGate>
+        <MyTokenPanel />
+      </ConnectedGate>
     </div>
   );
 }
+``
