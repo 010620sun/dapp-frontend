@@ -7,22 +7,28 @@ import type { Address } from 'viem';
 import { parseUnits, formatUnits } from 'viem';
 import { MYTOKEN_ABI } from '../abi/MyToken';
 import { env } from '../app/env';
+import { isAddress } from '../utils/address';
+import { StatusBar } from './StatusBar';
 
-// 간단한 주소/체인 → 토큰 주소 매핑
-function resolveAddress(chainId?: number): Address | undefined {
+// 체인에 따라 MyToken 주소 해석
+function resolveToken(chainId?: number): Address | undefined {
   if (!chainId) return undefined;
   if (chainId === env.chainId.local && env.mytoken.local) return env.mytoken.local as Address;
   if (chainId === env.chainId.sepolia && env.mytoken.sepolia) return env.mytoken.sepolia as Address;
   return undefined;
 }
-function isAddress(addr?: string): addr is Address {
-  return !!addr && /^0x[a-fA-F0-9]{40}$/.test(addr);
+
+function isAddr(addr?: string): addr is Address {
+  return isAddress(addr);
 }
 
 export const MyTokenPanel: React.FC = () => {
   const { address: me, isConnected } = useAccount();
   const chainId = useChainId();
-  const address = resolveAddress(chainId);
+  const token = resolveToken(chainId);
+
+  // ✅ 주소 가드: 토큰 주소가 유효해야 기능 활성화
+  const addressOk = isAddr(token);
 
   // 입력 상태
   const [spender, setSpender] = useState<string>('');
@@ -33,38 +39,39 @@ export const MyTokenPanel: React.FC = () => {
   const [tfTo, setTfTo] = useState<string>('');
   const [tfAmt, setTfAmt] = useState<string>('');
 
-  const canUse = isConnected && !!address;
+  const canUse = isConnected && addressOk;
 
   // ------- Reads -------
   const { data: name } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'name',
-    query: { enabled: !!address },
+    address: token, abi: MYTOKEN_ABI, functionName: 'name',
+    query: { enabled: addressOk },
   });
   const { data: symbol } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'symbol',
-    query: { enabled: !!address },
+    address: token, abi: MYTOKEN_ABI, functionName: 'symbol',
+    query: { enabled: addressOk },
   });
   const { data: decimals } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'decimals',
-    query: { enabled: !!address },
+    address: token, abi: MYTOKEN_ABI, functionName: 'decimals',
+    query: { enabled: addressOk },
   });
+  const dec = Number(decimals ?? 18);
+
   const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'totalSupply',
-    query: { enabled: !!address },
+    address: token, abi: MYTOKEN_ABI, functionName: 'totalSupply',
+    query: { enabled: addressOk },
   });
   const { data: paused } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'paused',
-    query: { enabled: !!address },
+    address: token, abi: MYTOKEN_ABI, functionName: 'paused',
+    query: { enabled: addressOk },
   });
   const { data: myBalance, refetch: refetchMyBalance } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'balanceOf', args: [me!],
-    query: { enabled: !!address && !!me },
+    address: token, abi: MYTOKEN_ABI, functionName: 'balanceOf', args: [me!],
+    query: { enabled: addressOk && !!me },
   });
 
   // allowance는 버튼으로 조회(필요할 때만 네트워크 호출)
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address, abi: MYTOKEN_ABI, functionName: 'allowance', args: [me!, spender as Address],
-    // 입력이 올바를 때만 수동 조회
+    address: token, abi: MYTOKEN_ABI, functionName: 'allowance', args: [me!, spender as Address],
     query: { enabled: false },
   });
 
@@ -75,28 +82,28 @@ export const MyTokenPanel: React.FC = () => {
   const disabledWrite = !canUse || !!paused || isPending || isConfirming || !decimals;
 
   const doApprove = async () => {
-    if (!address || !decimals) return;
-    if (!isAddress(spender) || !approveAmt.trim()) return;
+    if (!token || !decimals) return;
+    if (!isAddr(spender) || !approveAmt.trim()) return;
     writeContract({
-      address, abi: MYTOKEN_ABI, functionName: 'approve',
+      address: token, abi: MYTOKEN_ABI, functionName: 'approve',
       args: [spender as Address, parseUnits(approveAmt, Number(decimals))],
     });
   };
 
   const doTransfer = async () => {
-    if (!address || !decimals) return;
-    if (!isAddress(transferTo) || !transferAmt.trim()) return;
+    if (!token || !decimals) return;
+    if (!isAddr(transferTo) || !transferAmt.trim()) return;
     writeContract({
-      address, abi: MYTOKEN_ABI, functionName: 'transfer',
+      address: token, abi: MYTOKEN_ABI, functionName: 'transfer',
       args: [transferTo as Address, parseUnits(transferAmt, Number(decimals))],
     });
   };
 
   const doTransferFrom = async () => {
-    if (!address || !decimals) return;
-    if (!isAddress(tfFrom) || !isAddress(tfTo) || !tfAmt.trim()) return;
+    if (!token || !decimals) return;
+    if (!isAddr(tfFrom) || !isAddr(tfTo) || !tfAmt.trim()) return;
     writeContract({
-      address, abi: MYTOKEN_ABI, functionName: 'transferFrom',
+      address: token, abi: MYTOKEN_ABI, functionName: 'transferFrom',
       args: [tfFrom as Address, tfTo as Address, parseUnits(tfAmt, Number(decimals))],
     });
   };
@@ -106,20 +113,44 @@ export const MyTokenPanel: React.FC = () => {
     if (isSuccess) {
       refetchMyBalance?.();
       refetchTotalSupply?.();
-      if (allowance !== undefined) {
-        // spender 입력이 유효하면 허용량도 갱신
-        isAddress(spender) && refetchAllowance?.();
-      }
+      if (isAddr(spender)) refetchAllowance?.();
     }
   };
-  if (isSuccess) {
-    // 간단히 후처리 트리거 (렌더 타이밍 겹침 방지용)
-    setTimeout(afterSuccess, 0);
+  if (isSuccess) setTimeout(afterSuccess, 0);
+
+  // 🔹 상단 상태 바
+  const statusBar = (
+    <StatusBar
+      chainId={chainId}
+      token={token}
+      staking={undefined}              // MyToken 패널이므로 표시 생략 또는 필요 시 Staking 주소 전달 가능
+      paused={paused as boolean | undefined}
+    />
+  );
+
+  // 🔹 주소 오류 시 경고 박스
+  if (!addressOk) {
+    return (
+      <div style={{ border:'1px solid #ef4444', borderRadius:12, padding:16, maxWidth:900, margin:'0 auto' }}>
+        <h2 style={{ marginTop:0, color:'#ef4444' }}>주소 설정 오류</h2>
+        {statusBar}
+        <p>
+          <strong>.env.local</strong>의 <code>VITE_MYTOKEN_ADDRESS_*</code> 값을 확인하세요.
+          유효한 0x 주소여야 하며, 현재 체인({chainId})에 맞는 주소가 설정되어야 합니다.
+        </p>
+        <ul style={{ fontFamily:'monospace' }}>
+          <li>token: {String(token ?? '(unset)')}</li>
+        </ul>
+      </div>
+    );
   }
 
+  // 🔹 정상 UI
   return (
     <div style={{ border:'1px solid #e5e7eb', borderRadius:12, padding:16, maxWidth:900, margin:'0 auto' }}>
       <h2 style={{ marginTop:0 }}>MyToken 패널</h2>
+
+      {statusBar}
 
       {!canUse && (
         <p style={{ color:'#ef4444' }}>
@@ -130,12 +161,12 @@ export const MyTokenPanel: React.FC = () => {
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
         <div>
           <div><strong>토큰</strong>: {String(name)} ({String(symbol)})</div>
-          <div>decimals: {Number(decimals ?? 0)}</div>
+          <div>decimals: {dec}</div>
           <div>상태: {paused ? <span style={{ color:'#ef4444' }}>Paused ⏸️</span> : <span style={{ color:'#10b981' }}>Active ▶️</span>}</div>
         </div>
         <div>
-          <div><strong>총 발행량</strong>: {decimals != null && totalSupply != null ? `${formatUnits(totalSupply as bigint, Number(decimals))} ${String(symbol)}` : '...'}</div>
-          <div><strong>내 잔액</strong>: {decimals != null && myBalance != null ? `${formatUnits(myBalance as bigint, Number(decimals))} ${String(symbol)}` : '...'}</div>
+          <div><strong>총 발행량</strong>: {decimals != null && totalSupply != null ? `${formatUnits(totalSupply as bigint, dec)} ${String(symbol)}` : '...'}</div>
+          <div><strong>내 잔액</strong>: {decimals != null && myBalance != null ? `${formatUnits(myBalance as bigint, dec)} ${String(symbol)}` : '...'}</div>
         </div>
       </div>
 
@@ -150,13 +181,13 @@ export const MyTokenPanel: React.FC = () => {
           </label>
           <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:8 }}>
             <button
-              onClick={() => isAddress(spender) && refetchAllowance?.()}
+              onClick={() => isAddr(spender) && refetchAllowance?.()}
               disabled={!canUse}
             >
               허용량 조회
             </button>
             <span style={{ fontFamily:'monospace' }}>
-              {decimals != null && allowance != null ? `${formatUnits(allowance as bigint, Number(decimals))} ${String(symbol)}` : ''}
+              {decimals != null && allowance != null ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}` : ''}
             </span>
           </div>
           <label style={{ marginTop:8, display:'block' }}>승인 수량 ({String(symbol) || ''})
@@ -174,6 +205,7 @@ export const MyTokenPanel: React.FC = () => {
               Max
             </button>
           </div>
+          {!!paused && <p style={{ color:'#ef4444', marginTop:8 }}>현재 Paused 상태에서는 승인/전송이 제한됩니다.</p>}
         </div>
 
         {/* Transfer */}
@@ -211,7 +243,7 @@ export const MyTokenPanel: React.FC = () => {
             TransferFrom 실행
           </button>
           <p style={{ fontSize:12, marginTop:8 }}>
-            * 현재 계정이 <code>spender</code>로서 <code>from</code> 주소로부터 충분한 허용량(approve)을 보유해야 성공합니다.
+            * 이 기능은 현재 계정이 <code>spender</code>로서 <code>from</code> 주소로부터 충분한 허용량(approve)을 보유해야 성공합니다.
           </p>
         </div>
       </section>
@@ -229,3 +261,4 @@ export const MyTokenPanel: React.FC = () => {
     </div>
   );
 };
+``
