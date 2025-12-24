@@ -11,5 +11,9 @@ export const env = {
   mytoken: {
     local: import.meta.env.VITE_ERC20_ADDRESS_LOCAL as string | undefined,
     sepolia: import.meta.env.VITE_ERC20_ADDRESS_SEPOLIA as string | undefined,
+  },
+  staking: {
+    local: import.meta.env.VITE_STAKING_ADDRESS_LOCAL as string | undefined,
+    sepolia: import.meta.env.VITE_STAKING_ADDRESS_SEPOLIA as string | undefined,
   }
 };
