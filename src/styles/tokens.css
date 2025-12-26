@@ -1,0 +1,56 @@
+
+/* src/styles/tokens.css */
+:root {
+  /* Light theme (기본) */
+  --bg: #ffffff;
+  --bg-soft: #f6f7fb;
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --subtext: #475569;
+  --primary: #2563eb;
+  --primary-contrast: #ffffff;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-xs: 6px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.10);
+  --shadow-lg: 0 6px 24px rgba(15, 23, 42, 0.12);
+  --spacing: 16px;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+          "Noto Sans", "Apple SD Gothic Neo", "Malgun Gothic", Arial,
+          "Helvetica Neue", Helvetica, sans-serif;
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+
+/* src/styles/tokens.css (dark 섹션만 수정) */
+.dark {
+  --bg: #0b1220;
+  --bg-soft: #0f172a;
+  /* 경계선을 한 톤 밝게 → 카드/인풋 구분 강화 */
+  --border: #334155;        /* 기존 #1f2937 보다 약간 더 밝음 */
+  --text: #e5e7eb;
+  --subtext: #a3aec2;       /* 미묘하게 밝게 → 읽기 편함 */
+  /* 포인트는 조금 더 밝게 유지 */
+  --primary: #60a5fa;
+  --primary-contrast: #0b1220;
+
+  /* 입력 배경을 카드보다 살짝 밝게 → 구분감 */
+  --input-bg: #111827;
+  --input-border: #3b4758;
+  --input-placeholder: #7b8799;
+
+  /* 카드 배경도 아주 살짝 올리기 */
+  --card-bg: #0f172a;
+
+  /* 그림자: 다크에선 최소화 */
+  --shadow: none;
+  --shadow-lg: none;
+}

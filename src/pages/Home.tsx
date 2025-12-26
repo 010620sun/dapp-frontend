@@ -5,38 +5,37 @@ import { ConnectedGate } from '../components/ConnectedGate';
 import { MyTokenPanel } from '../components/MyTokenPanel';
 import { StakingPanel } from '../components/StakingPanel';
 import { AccountBadge } from '../components/AccountBadge';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { useAccount } from 'wagmi';
 
 export default function Home() {
   const { isConnected } = useAccount();
 
   return (
-    <div style={{ maxWidth: 1024, margin: '0 auto', padding: 16 }}>
-      {/* 헤더 영역 */}
-      <div
-        style={{
+    <div style={{ display:'flex', justifyContent:'center' }}>
+      <div style={{ width:'100%', maxWidth: 960, padding: 16 }}>
+        <header style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 12,
-          marginBottom: 12,
-        }}
-      >
-        <h1 style={{ margin: 0 }}>DApp — MyToken & Staking</h1>
+          marginBottom: 16,
+        }}>
+          <h1 style={{ margin: 0, fontSize: 20 }}>DApp — MyToken & Staking</h1>
+          <div style={{ display:'flex', gap: 12, alignItems:'center' }}>
+            <ThemeToggle />
+            {isConnected && <AccountBadge />}
+          </div>
+        </header>
 
-        {/* ✅ 연결 전: 아무 것도 표시하지 않음, 연결 후: 계정 팝오버 버튼 */}
-        {isConnected && <AccountBadge />}
+        <ConnectedGate>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr', gap: 16 }}>
+            <MyTokenPanel />
+            <StakingPanel />
+          </div>
+        </ConnectedGate>
       </div>
-
-      {/* 본문: 연결 후에만 패널 활성화 */}
-      <ConnectedGate>
-        <div style={{ marginTop: 16 }}>
-          <MyTokenPanel />
-        </div>
-        <div style={{ marginTop: 24 }}>
-          <StakingPanel />
-        </div>
-      </ConnectedGate>
     </div>
   );
 }
+``

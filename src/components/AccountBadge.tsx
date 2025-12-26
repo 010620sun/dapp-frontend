@@ -22,9 +22,10 @@ export const AccountBadge: React.FC = () => {
       title="계정 정보"
       style={{
         padding: '8px 12px',
-        border: '1px solid #e5e7eb',
-        borderRadius: 8,
-        background: '#ffffff',
+        borderRadius: 'var(--radius-xs)',
+        background: 'var(--primary)',
+        color:  'var(--primary-contrast)',
+        border: '1px solid var(--primary)',
         cursor: 'pointer',
       }}
     >

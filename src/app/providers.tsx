@@ -1,7 +1,7 @@
 
 import React from 'react';
 import '@rainbow-me/rainbowkit/styles.css';
-import { RainbowKitProvider, getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { RainbowKitProvider, getDefaultConfig,lightTheme } from '@rainbow-me/rainbowkit';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, defineChain } from 'viem';
@@ -32,7 +32,15 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({ children
   <WagmiProvider config={config}>
     <QueryClientProvider client={queryClient}>
       {/* ✅ chains prop 제거 */}
-      <RainbowKitProvider>
+      <RainbowKitProvider
+        theme={lightTheme({
+        accentColor: '#2563eb',
+        accentColorForeground: '#ffffff',
+        borderRadius: 'medium',
+        fontStack: 'system',
+        overlayBlur: 'small',
+        })}
+      >
         {children}
       </RainbowKitProvider>
     </QueryClientProvider>
