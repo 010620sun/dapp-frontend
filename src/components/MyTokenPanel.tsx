@@ -1,6 +1,6 @@
 
 // src/components/MyTokenPanel.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAccount, useChainId } from 'wagmi';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import type { Address } from 'viem';
@@ -47,51 +47,35 @@ export const MyTokenPanel: React.FC = () => {
 
   // --- Reads ---
   const { data: name } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'name',
+    address: token, abi: MYTOKEN_ABI, functionName: 'name',
     query: { enabled: addressOk },
   });
   const { data: symbol } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'symbol',
+    address: token, abi: MYTOKEN_ABI, functionName: 'symbol',
     query: { enabled: addressOk },
   });
   const { data: decimals } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'decimals',
+    address: token, abi: MYTOKEN_ABI, functionName: 'decimals',
     query: { enabled: addressOk },
   });
   const dec = Number(decimals ?? 18);
 
   const { data: totalSupply, refetch: refetchTotalSupply } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'totalSupply',
+    address: token, abi: MYTOKEN_ABI, functionName: 'totalSupply',
     query: { enabled: addressOk },
   });
   const { data: paused } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'paused',
+    address: token, abi: MYTOKEN_ABI, functionName: 'paused',
     query: { enabled: addressOk },
   });
   const { data: myBalance, refetch: refetchMyBalance } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'balanceOf',
-    args: [me!],
+    address: token, abi: MYTOKEN_ABI, functionName: 'balanceOf', args: [me!],
     query: { enabled: addressOk && !!me },
   });
 
   // allowance는 버튼으로 수동 조회(필요할 때만 네트워크 호출)
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'allowance',
-    args: [me!, spender as Address],
+    address: token, abi: MYTOKEN_ABI, functionName: 'allowance', args: [me!, spender as Address],
     query: { enabled: false },
   });
 
@@ -106,35 +90,61 @@ export const MyTokenPanel: React.FC = () => {
     isConfirming ||
     !decimals;
 
+  // ✅ Write 성공 시 입력들 초기화(B 전략)
+  useEffect(() => {
+    if (!isSuccess) return;
+    // 다음 tick에서 안전하게 반영
+    const id = setTimeout(() => {
+      setApproveAmt('');
+      setTransferTo('');
+      setTransferAmt('');
+      setTfFrom('');
+      setTfTo('');
+      setTfAmt('');
+    }, 0);
+    return () => clearTimeout(id);
+  }, [isSuccess]);
+
+  // ✅ 지갑 연결 해제 시 모든 입력 초기화(UX 정리)
+  useEffect(() => {
+    if (isConnected) return;
+    setSpender('');
+    setApproveAmt('');
+    setTransferTo('');
+    setTransferAmt('');
+    setTfFrom('');
+    setTfTo('');
+    setTfAmt('');
+  }, [isConnected]);
+
   const doApprove = async () => {
     if (!token || !decimals) return;
     if (!isAddr(spender) || !approveAmt.trim()) return;
     writeContract({
-      address: token,
-      abi: MYTOKEN_ABI,
-      functionName: 'approve',
+      address: token, abi: MYTOKEN_ABI, functionName: 'approve',
       args: [spender as Address, parseUnits(approveAmt, Number(decimals))],
     });
+    // 즉시 초기화가 필요하면 아래 주석 해제:
+    // setApproveAmt('');
   };
   const doTransfer = async () => {
     if (!token || !decimals) return;
     if (!isAddr(transferTo) || !transferAmt.trim()) return;
     writeContract({
-      address: token,
-      abi: MYTOKEN_ABI,
-      functionName: 'transfer',
+      address: token, abi: MYTOKEN_ABI, functionName: 'transfer',
       args: [transferTo as Address, parseUnits(transferAmt, Number(decimals))],
     });
+    // setTransferTo('');
+    // setTransferAmt('');
   };
   const doTransferFrom = async () => {
     if (!token || !decimals) return;
     if (!isAddr(tfFrom) || !isAddr(tfTo) || !tfAmt.trim()) return;
     writeContract({
-      address: token,
-      abi: MYTOKEN_ABI,
-      functionName: 'transferFrom',
+      address: token, abi: MYTOKEN_ABI, functionName: 'transferFrom',
       args: [tfFrom as Address, tfTo as Address, parseUnits(tfAmt, Number(decimals))],
     });
+    // setTfFrom(''); setTfTo(''); setTfAmt('');
   };
 
   // 트랜잭션 완료 후 상태 갱신
@@ -149,6 +159,16 @@ export const MyTokenPanel: React.FC = () => {
   };
   if (isSuccess) setTimeout(afterSuccess, 0);
 
+  // ✅ 조회 버튼: refetch 끝나면 선택적으로 초기화 (기본은 유지)
+  const onQueryAllowance = async () => {
+    try {
+      await refetchAllowance?.();
+    } finally {
+      // 조회 후 초기화가 필요하면 주석 해제
+      // setSpender('');
+    }
+  };
+
   // 상단 상태바
   const statusBar = (
     <StatusBar
@@ -162,8 +182,8 @@ export const MyTokenPanel: React.FC = () => {
   // 주소 오류 시 경고 박스
   if (!addressOk) {
     return (
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h2 style={{ marginTop: 0 }}>MyToken 패널</h2>
+      <div style={{ width: '100%' }}>
+        <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>MyToken 패널</h2>
         {statusBar}
         <Card title="주소 설정 오류" note=".env.local의 VITE_MYTOKEN_ADDRESS_* 값을 확인하세요. 현재 체인에 맞는 0x 주소가 필요합니다.">
           <ul style={{ fontFamily: 'monospace', margin: 0 }}>
@@ -176,7 +196,7 @@ export const MyTokenPanel: React.FC = () => {
 
   // 정상 UI
   return (
-    <div style={{ width:  '100%' }}>
+    <div style={{ width: '100%' }}>
       <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>MyToken 패널</h2>
       {statusBar}
 
@@ -209,9 +229,7 @@ export const MyTokenPanel: React.FC = () => {
           onChange={(e) => setSpender(e.target.value)}
         />
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <Button onClick={() => isAddr(spender) && refetchAllowance?.()} disabled={!canUse}>
-            허용량 조회
-          </Button>
+          <Button onClick={onQueryAllowance} disabled={!canUse}>허용량 조회</Button>
           <span style={{ fontFamily: 'monospace' }}>
             {decimals != null && allowance != null ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}` : ''}
           </span>
@@ -225,10 +243,8 @@ export const MyTokenPanel: React.FC = () => {
           style={{ marginTop: 8 }}
         />
         <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-          <Button variant="primary" onClick={doApprove} disabled={disabledWrite}>
-            승인하기
-          </Button>
-          {/* 최대 승인(무한 승인) 버튼—보안 리스크에 대한 안내는 노트/툴팁으로 추가 가능 */}
+          <Button variant="primary" onClick={doApprove} disabled={disabledWrite}>승인하기</Button>
+          {/* 최대 승인(무한 승인) */}
           <Button
             onClick={() =>
               setApproveAmt('115792089237316195423570985008687907853269984665640564039457584007913129639935')
@@ -240,7 +256,6 @@ export const MyTokenPanel: React.FC = () => {
             Max
           </Button>
         </div>
-
         {!!paused && (
           <p style={{ color: 'var(--danger)', marginTop: 8 }}>
             현재 Paused 상태에서는 승인/전송이 제한됩니다.

@@ -45,55 +45,37 @@ export const StakingPanel: React.FC = () => {
 
   // 토큰 메타/상태
   const { data: symbol } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'symbol',
+    address: token, abi: MYTOKEN_ABI, functionName: 'symbol',
     query: { enabled: addressesOk },
   });
   const { data: decimals } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'decimals',
+    address: token, abi: MYTOKEN_ABI, functionName: 'decimals',
     query: { enabled: addressesOk },
   });
   const dec = Number(decimals ?? 18);
 
   const { data: paused } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'paused',
+    address: token, abi: MYTOKEN_ABI, functionName: 'paused',
     query: { enabled: addressesOk },
   });
 
   // 잔액/허용량/스테이킹 상태
   const { data: myWalletBalance, refetch: refetchWalletBalance } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'balanceOf',
-    args: [me!],
+    address: token, abi: MYTOKEN_ABI, functionName: 'balanceOf', args: [me!],
     query: { enabled: addressesOk && !!me },
   });
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: token,
-    abi: MYTOKEN_ABI,
-    functionName: 'allowance',
-    args: [me!, staking!],
+    address: token, abi: MYTOKEN_ABI, functionName: 'allowance', args: [me!, staking!],
     query: { enabled: false }, // 버튼으로 수동 조회
   });
   const { data: staked, refetch: refetchStaked } = useReadContract({
-    address: staking,
-    abi: STAKING_ABI,
-    functionName: 'getStaked',
-    args: [me!],
+    address: staking, abi: STAKING_ABI, functionName: 'getStaked', args: [me!],
     query: { enabled: addressesOk && !!me },
   });
 
   // earned는 버튼으로만 조회
   const { data: earnedNow, refetch: refetchEarned } = useReadContract({
-    address: staking,
-    abi: STAKING_ABI,
-    functionName: 'earned',
-    args: [me!],
+    address: staking, abi: STAKING_ABI, functionName: 'earned', args: [me!],
     query: { enabled: false },
   });
 
@@ -119,43 +101,56 @@ export const StakingPanel: React.FC = () => {
     isConfirming ||
     !decimals;
 
+  // ✅ Write 성공 시 입력들 초기화(B 전략)
+  useEffect(() => {
+    if (!isSuccess) return;
+    const id = setTimeout(() => {
+      setApproveAmt('');
+      setStakeAmt('');
+      setUnstakeAmt('');
+    }, 0);
+    return () => clearTimeout(id);
+  }, [isSuccess]);
+
+  // ✅ 지갑 연결 해제 시 입력 초기화
+  useEffect(() => {
+    if (isConnected) return;
+    setApproveAmt('');
+    setStakeAmt('');
+    setUnstakeAmt('');
+  }, [isConnected]);
+
   const onApprove = async () => {
     if (!token || !staking || !approveAmt.trim()) return;
     writeContract({
-      address: token,
-      abi: MYTOKEN_ABI,
-      functionName: 'approve',
+      address: token, abi: MYTOKEN_ABI, functionName: 'approve',
       args: [staking, parseUnits(approveAmt, dec)],
     });
+    // 즉시 초기화 원하면:
+    // setApproveAmt('');
   };
   const onStake = async () => {
     if (!staking || !stakeAmt.trim()) return;
     writeContract({
-      address: staking,
-      abi: STAKING_ABI,
-      functionName: 'stake',
+      address: staking, abi: STAKING_ABI, functionName: 'stake',
       args: [parseUnits(stakeAmt, dec)],
     });
+    // setStakeAmt('');
   };
   const onUnstake = async () => {
     if (!staking || !unstakeAmt.trim()) return;
     writeContract({
-      address: staking,
-      abi: STAKING_ABI,
-      functionName: 'unstake',
+      address: staking, abi: STAKING_ABI, functionName: 'unstake',
       args: [parseUnits(unstakeAmt, dec)],
     });
+    // setUnstakeAmt('');
   };
   const onFinalize = async () => {
     if (!staking) return;
-    writeContract({
-      address: staking,
-      abi: STAKING_ABI,
-      functionName: 'finalizeReward',
-      args: [],
-    });
+    writeContract({ address: staking, abi: STAKING_ABI, functionName: 'finalizeReward', args: [] });
   };
 
+  // 트랜잭션 완료 후 상태 갱신
   useEffect(() => {
     if (!isSuccess) return;
     (async () => {
@@ -166,6 +161,20 @@ export const StakingPanel: React.FC = () => {
       ]);
     })();
   }, [isSuccess, refetchWalletBalance, refetchAllowance, refetchStaked]);
+
+  // ✅ 조회 버튼: refetch 끝나면 선택적으로 초기화 (현재는 유지)
+  const onQueryAllowance = async () => {
+    try {
+      await refetchAllowance?.();
+    } finally {
+      // 필요하면 조회 후 approveAmt도 비울 수 있음:
+      // setApproveAmt('');
+    }
+  };
+  const onQueryEarned = async () => {
+    await refetchEarned?.();
+    // earned 조회는 입력값이 없으므로 초기화 대상 없음
+  };
 
   // 상단 상태바
   const statusBar = (
@@ -180,8 +189,8 @@ export const StakingPanel: React.FC = () => {
   // 주소 오류 시 경고 박스
   if (!addressesOk) {
     return (
-      <div style={{ maxWidth: 900, margin: '0 auto' }}>
-        <h2 style={{ marginTop: 0 }}>Staking 패널</h2>
+      <div style={{ width: '100%' }}>
+        <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>Staking 패널</h2>
         {statusBar}
         <Card title="주소 설정 오류" note=".env.local의 VITE_MYTOKEN_ADDRESS_*과 VITE_STAKING_ADDRESS_* 값을 확인하세요. 두 주소는 모두 유효해야 하며 서로 달라야 합니다.">
           <ul style={{ fontFamily: 'monospace', margin: 0 }}>
@@ -195,20 +204,21 @@ export const StakingPanel: React.FC = () => {
 
   // 정상 UI
   return (
-    <div style={{ width:  '100%' }}>
+    <div style={{ width: '100%' }}>
       <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>Staking 패널</h2>
       {statusBar}
 
       {/* Approve (Staking용) */}
       <Card title="Approve (Staking용)" note="허용량/승인은 필요 시에만 조회/실행합니다.">
-        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap: 16 }}>
-          <Button onClick={() => refetchAllowance?.()} disabled={!canUse}>
-            허용량 조회
-          </Button>
-          <span style={{ fontFamily: 'monospace' }}>
-            {allowance != null ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}` : ''}
-          </span>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap: 8 }}>
+          <div style={{ display:'flex', gap: 8, alignItems:'center' }}>
+            <Button onClick={onQueryAllowance} disabled={!canUse}>허용량 조회</Button>
+            <span style={{ fontFamily: 'monospace' }}>
+              {allowance != null ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}` : ''}
+            </span>
+          </div>
         </div>
+
         <Input
           label={`승인 수량 (${String(symbol) || ''})`}
           placeholder="100"
@@ -217,9 +227,7 @@ export const StakingPanel: React.FC = () => {
           style={{ marginTop: 8 }}
         />
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <Button variant="primary" onClick={onApprove} disabled={disabledWriteToken}>
-            승인하기
-          </Button>
+          <Button variant="primary" onClick={onApprove} disabled={disabledWriteToken}>승인하기</Button>
           <Button
             type="button"
             onClick={() =>
@@ -279,11 +287,9 @@ export const StakingPanel: React.FC = () => {
       </div>
 
       {/* Reward: earned는 버튼으로만 조회 */}
-      <Card title="Reward (예상 보상)" note="필요할 때만 조회합니다." >
+      <Card title="Reward (예상 보상)" note="필요할 때만 조회합니다.">
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Button onClick={() => refetchEarned?.()} disabled={!canUse}>
-            예상 보상 조회
-          </Button>
+          <Button onClick={onQueryEarned} disabled={!canUse}>예상 보상 조회</Button>
           <span style={{ fontFamily: 'monospace' }}>
             {earnedNow != null
               ? `${formatUnits(earnedNow as bigint, dec)} ${String(symbol)}`
@@ -314,4 +320,3 @@ export const StakingPanel: React.FC = () => {
     </div>
   );
 };
-``
