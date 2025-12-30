@@ -207,6 +207,35 @@ export const StakingPanel: React.FC = () => {
     <div style={{ width: '100%' }}>
       <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>Staking 패널</h2>
       {statusBar}
+  
+    {/* ✅ 요약 카드: 지갑 잔액 / 내 스테이킹 잔량 / 허용량 간단 표시 */}
+    <Card>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap: 16 }}>
+        <div>
+          <div>
+            <strong>지갑 잔액</strong>:{' '}
+            {decimals != null && myWalletBalance != null
+              ? `${formatUnits(myWalletBalance as bigint, dec)} ${String(symbol)}`
+              : '...'}
+          </div>
+          <div>
+            <strong>내 스테이킹 잔량</strong>:{' '}
+            {decimals != null && staked != null
+              ? `${formatUnits(staked as bigint, dec)} ${String(symbol)}`
+              : '...'}
+          </div>
+        </div>
+        <div>
+          <div>
+            <strong>허용량(→ Staking)</strong>:{' '}
+            {decimals != null && allowance != null
+              ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}`
+              : '(조회 버튼으로 확인)'}
+          </div>
+          {/* 필요하면 earned 요약도 여기에 간단히 표시할 수 있습니다 */}
+        </div>
+      </div>
+    </Card>
 
       {/* Approve (Staking용) */}
       <Card title="Approve (Staking용)" note="허용량/승인은 필요 시에만 조회/실행합니다.">
