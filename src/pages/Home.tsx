@@ -1,6 +1,5 @@
 
 // src/pages/Home.tsx
-import React from 'react';
 import { ConnectedGate } from '../components/ConnectedGate';
 import { MyTokenPanel } from '../components/MyTokenPanel';
 import { StakingPanel } from '../components/StakingPanel';
