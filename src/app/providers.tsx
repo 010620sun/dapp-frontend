@@ -5,6 +5,8 @@ import { RainbowKitProvider, getDefaultConfig,lightTheme } from '@rainbow-me/rai
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, defineChain } from 'viem';
+import { sepolia } from 'wagmi/chains'
+
 
 const queryClient = new QueryClient();
 
@@ -22,8 +24,9 @@ const hardhatLocal = defineChain({
 const config = getDefaultConfig({
   appName: 'My Dapp',
   projectId: '2f22e523669af2a8e27857cf9c8eb012',
-  chains: [hardhatLocal],
+  chains: [sepolia, hardhatLocal],
   transports: {
+    [sepolia.id]: http(import.meta.env.VITE_SEPOLIA_RPC_URL ?? undefined),
     [hardhatLocal.id]: http('http://127.0.0.1:8545'),
   },
 });
