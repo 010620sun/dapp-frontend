@@ -1,7 +1,7 @@
 
 // src/components/StakingPanel.tsx
 import React, { useEffect, useState } from 'react';
-import { useAccount, useChainId } from 'wagmi';
+import { useAccount, useChainId, usePublicClient } from 'wagmi';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import type { Address } from 'viem';
 import { parseUnits, formatUnits } from 'viem';
@@ -10,8 +10,6 @@ import { MYTOKEN_ABI } from '../abi/MyToken';
 import { env } from '../app/env';
 import { isAddress, eqAddress } from '../utils/address';
 import { StatusBar } from './StatusBar';
-
-// 디자인 컴포넌트
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
@@ -32,12 +30,10 @@ function resolveToken(chainId?: number): Address | undefined {
 export const StakingPanel: React.FC = () => {
   const { address: me, isConnected } = useAccount();
   const chainId = useChainId();
+  const publicClient = usePublicClient();
 
-  // 주소 해석
   const staking = resolveStaking(chainId);
   const token = resolveToken(chainId);
-
-  // 주소 가드: 두 주소 모두 유효 & 서로 달라야 함
   const addressesOk =
     isAddress(token) &&
     isAddress(staking) &&
@@ -53,7 +49,6 @@ export const StakingPanel: React.FC = () => {
     query: { enabled: addressesOk },
   });
   const dec = Number(decimals ?? 18);
-
   const { data: paused } = useReadContract({
     address: token, abi: MYTOKEN_ABI, functionName: 'paused',
     query: { enabled: addressesOk },
@@ -66,35 +61,30 @@ export const StakingPanel: React.FC = () => {
   });
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: token, abi: MYTOKEN_ABI, functionName: 'allowance', args: [me!, staking!],
-    query: { enabled: false }, // 버튼으로 수동 조회
+    query: { enabled: false }, // 수동 조회
   });
   const { data: staked, refetch: refetchStaked } = useReadContract({
     address: staking, abi: STAKING_ABI, functionName: 'getStaked', args: [me!],
     query: { enabled: addressesOk && !!me },
   });
-
-  // earned는 버튼으로만 조회
   const { data: earnedNow, refetch: refetchEarned } = useReadContract({
     address: staking, abi: STAKING_ABI, functionName: 'earned', args: [me!],
     query: { enabled: false },
   });
 
-  const [approveAmt, setApproveAmt] = useState<string>('');
   const [stakeAmt, setStakeAmt] = useState<string>('');
   const [unstakeAmt, setUnstakeAmt] = useState<string>('');
 
-  const { data: txHash, writeContract, isPending, error } = useWriteContract();
+  const { data: txHash, writeContract, writeContractAsync, isPending, error } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const canUse = isConnected && addressesOk;
-
   const disabledWriteToken =
     !canUse ||
     !!paused ||
     isPending ||
     isConfirming ||
     !decimals;
-
   const disabledWriteStaking =
     !canUse ||
     isPending ||
@@ -105,7 +95,6 @@ export const StakingPanel: React.FC = () => {
   useEffect(() => {
     if (!isSuccess) return;
     const id = setTimeout(() => {
-      setApproveAmt('');
       setStakeAmt('');
       setUnstakeAmt('');
     }, 0);
@@ -115,68 +104,79 @@ export const StakingPanel: React.FC = () => {
   // ✅ 지갑 연결 해제 시 입력 초기화
   useEffect(() => {
     if (isConnected) return;
-    setApproveAmt('');
     setStakeAmt('');
     setUnstakeAmt('');
   }, [isConnected]);
 
-  const onApprove = async () => {
-    if (!token || !staking || !approveAmt.trim()) return;
-    writeContract({
-      address: token, abi: MYTOKEN_ABI, functionName: 'approve',
-      args: [staking, parseUnits(approveAmt, dec)],
-    });
-    // 즉시 초기화 원하면:
-    // setApproveAmt('');
+  // ✅ 조회 버튼: refetch 끝나면 선택적으로 초기화(현재는 유지)
+  const onQueryAllowance = async () => {
+    await refetchAllowance?.();
   };
+
+  const onQueryEarned = async () => {
+    await refetchEarned?.();
+  };
+
+  // ✅ 자동 승인 후 스테이킹
   const onStake = async () => {
-    if (!staking || !stakeAmt.trim()) return;
-    writeContract({
-      address: staking, abi: STAKING_ABI, functionName: 'stake',
-      args: [parseUnits(stakeAmt, dec)],
+    if (!staking || !token || !stakeAmt.trim()) return;
+    const amount = parseUnits(stakeAmt, dec);
+
+    // 1) 최신 허용량 확인
+    let current = allowance as bigint | null;
+    if (current == null) {
+      const res = await refetchAllowance?.();
+      current = (res?.data ?? null) as bigint | null;
+    }
+
+    // 2) 부족하면 필요한 만큼 approve
+    if ((current ?? 0n) < amount) {
+      const approveHash = await writeContractAsync({
+        address: token,
+        abi: MYTOKEN_ABI,
+        functionName: 'approve',
+        args: [staking, amount],
+      });
+      await publicClient?.waitForTransactionReceipt({ hash: approveHash as `0x${string}` });
+      await refetchAllowance?.(); // UI 반영
+    }
+
+    // 3) stake 실행
+    const stakeHash = await writeContractAsync({
+      address: staking,
+      abi: STAKING_ABI,
+      functionName: 'stake',
+      args: [amount],
     });
-    // setStakeAmt('');
+    await publicClient?.waitForTransactionReceipt({ hash: stakeHash as `0x${string}` });
+    // 완료 후 상태 갱신
+    await Promise.allSettled([
+      refetchWalletBalance?.(),
+      refetchStaked?.(),
+    ]);
   };
+
   const onUnstake = async () => {
     if (!staking || !unstakeAmt.trim()) return;
-    writeContract({
-      address: staking, abi: STAKING_ABI, functionName: 'unstake',
-      args: [parseUnits(unstakeAmt, dec)],
+    const amount = parseUnits(unstakeAmt, dec);
+    const unstakeHash = await writeContractAsync({
+      address: staking,
+      abi: STAKING_ABI,
+      functionName: 'unstake',
+      args: [amount],
     });
-    // setUnstakeAmt('');
+    await publicClient?.waitForTransactionReceipt({ hash: unstakeHash as `0x${string}` });
+    await Promise.allSettled([
+      refetchWalletBalance?.(),
+      refetchStaked?.(),
+    ]);
   };
+
   const onFinalize = async () => {
     if (!staking) return;
     writeContract({ address: staking, abi: STAKING_ABI, functionName: 'finalizeReward', args: [] });
   };
 
-  // 트랜잭션 완료 후 상태 갱신
-  useEffect(() => {
-    if (!isSuccess) return;
-    (async () => {
-      await Promise.allSettled([
-        refetchWalletBalance?.(),
-        refetchAllowance?.(),
-        refetchStaked?.(),
-      ]);
-    })();
-  }, [isSuccess, refetchWalletBalance, refetchAllowance, refetchStaked]);
-
-  // ✅ 조회 버튼: refetch 끝나면 선택적으로 초기화 (현재는 유지)
-  const onQueryAllowance = async () => {
-    try {
-      await refetchAllowance?.();
-    } finally {
-      // 필요하면 조회 후 approveAmt도 비울 수 있음:
-      // setApproveAmt('');
-    }
-  };
-  const onQueryEarned = async () => {
-    await refetchEarned?.();
-    // earned 조회는 입력값이 없으므로 초기화 대상 없음
-  };
-
-  // 상단 상태바
   const statusBar = (
     <StatusBar
       chainId={chainId}
@@ -186,7 +186,6 @@ export const StakingPanel: React.FC = () => {
     />
   );
 
-  // 주소 오류 시 경고 박스
   if (!addressesOk) {
     return (
       <div style={{ width: '100%' }}>
@@ -202,85 +201,38 @@ export const StakingPanel: React.FC = () => {
     );
   }
 
-  // 정상 UI
   return (
     <div style={{ width: '100%' }}>
       <h2 style={{ marginTop: 0, marginBottom: 12, fontSize: 18 }}>Staking 패널</h2>
       {statusBar}
-  
-    {/* ✅ 요약 카드: 지갑 잔액 / 내 스테이킹 잔량 / 허용량 간단 표시 */}
-    <Card>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap: 16 }}>
-        <div>
-          <div>
-            <strong>지갑 잔액</strong>:{' '}
-            {decimals != null && myWalletBalance != null
-              ? `${formatUnits(myWalletBalance as bigint, dec)} ${String(symbol)}`
-              : '...'}
-          </div>
-          <div>
-            <strong>내 스테이킹 잔량</strong>:{' '}
-            {decimals != null && staked != null
-              ? `${formatUnits(staked as bigint, dec)} ${String(symbol)}`
-              : '...'}
-          </div>
-        </div>
-        <div>
-          <div>
-            <strong>허용량(→ Staking)</strong>:{' '}
-            {decimals != null && allowance != null
-              ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}`
-              : '(조회 버튼으로 확인)'}
-          </div>
-          {/* 필요하면 earned 요약도 여기에 간단히 표시할 수 있습니다 */}
-        </div>
-      </div>
-    </Card>
 
-      {/* Approve (Staking용) */}
-      <Card title="Approve (Staking용)" note="허용량/승인은 필요 시에만 조회/실행합니다.">
-        <div style={{ display:'grid', gridTemplateColumns:'1fr', gap: 8 }}>
-          <div style={{ display:'flex', gap: 8, alignItems:'center' }}>
-            <Button onClick={onQueryAllowance} disabled={!canUse}>허용량 조회</Button>
-            <span style={{ fontFamily: 'monospace' }}>
-              {allowance != null ? `${formatUnits(allowance as bigint, dec)} ${String(symbol)}` : ''}
-            </span>
+      {/* 요약 카드 */}
+      <Card>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap: 16 }}>
+          <div>
+            <div>
+              <strong>지갑 잔액</strong>:{' '}
+              {decimals != null && myWalletBalance != null
+                ? `${formatUnits(myWalletBalance as bigint, dec)} ${String(symbol)}`
+                : '...'}
+            </div>
+          </div>
+          <div>
+              <div>
+                <strong>내 스테이킹 잔량</strong>:{' '}
+                {decimals != null && staked != null
+                  ? `${formatUnits(staked as bigint, dec)} ${String(symbol)}`
+                  : '...'}
+              </div>
           </div>
         </div>
-
-        <Input
-          label={`승인 수량 (${String(symbol) || ''})`}
-          placeholder="100"
-          value={approveAmt}
-          onChange={(e) => setApproveAmt(e.target.value)}
-          style={{ marginTop: 8 }}
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <Button variant="primary" onClick={onApprove} disabled={disabledWriteToken}>승인하기</Button>
-          <Button
-            type="button"
-            onClick={() =>
-              setApproveAmt('115792089237316195423570985008687907853269984665640564039457584007913129639935')
-            }
-            disabled={!canUse || !!(paused as boolean)}
-            title="최대치로 승인"
-            variant="outline"
-          >
-            Max
-          </Button>
-        </div>
-        {!!paused && (
-          <p style={{ color: 'var(--danger)', marginTop: 8 }}>
-            현재 Paused 상태에서는 승인/전송/스테이킹이 제한됩니다.
-          </p>
-        )}
       </Card>
 
       {/* Stake / Unstake */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
         <Card title="Stake">
           <Input
-            label={`수량 (${String(symbol) || ''})`}
+            label={`수량 (${String(symbol) ?? ''})`}
             placeholder="50"
             value={stakeAmt}
             onChange={(e) => setStakeAmt(e.target.value)}
@@ -293,14 +245,16 @@ export const StakingPanel: React.FC = () => {
           >
             스테이킹
           </Button>
-          <p style={{ fontSize: 12, color: 'var(--subtext)', marginTop: 8 }}>
-            * 허용량이 부족하면 실패합니다. 먼저 Approve로 Staking 컨트랙트에 충분한 허용량을 부여하세요.
-          </p>
+          {!!paused && (
+            <p style={{ color: 'var(--danger)', marginTop: 8 }}>
+              현재 Paused 상태에서는 승인/전송/스테이킹이 제한됩니다.
+            </p>
+          )}
         </Card>
 
         <Card title="Unstake">
           <Input
-            label={`수량 (${String(symbol) || ''})`}
+            label={`수량 (${String(symbol) ?? ''})`}
             placeholder="10"
             value={unstakeAmt}
             onChange={(e) => setUnstakeAmt(e.target.value)}
@@ -315,7 +269,7 @@ export const StakingPanel: React.FC = () => {
         </Card>
       </div>
 
-      {/* Reward: earned는 버튼으로만 조회 */}
+      {/* Reward */}
       <Card title="Reward (예상 보상)" note="필요할 때만 조회합니다.">
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <Button onClick={onQueryEarned} disabled={!canUse}>예상 보상 조회</Button>
@@ -325,7 +279,6 @@ export const StakingPanel: React.FC = () => {
               : '(조회 전)'}
           </span>
         </div>
-
         <div style={{ marginTop: 12 }}>
           <Button onClick={onFinalize} disabled={disabledWriteStaking}>
             보상 수령(finalizeReward)
