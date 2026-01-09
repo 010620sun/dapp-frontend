@@ -108,11 +108,6 @@ export const StakingPanel: React.FC = () => {
     setUnstakeAmt('');
   }, [isConnected]);
 
-  // ✅ 조회 버튼: refetch 끝나면 선택적으로 초기화(현재는 유지)
-  const onQueryAllowance = async () => {
-    await refetchAllowance?.();
-  };
-
   const onQueryEarned = async () => {
     await refetchEarned?.();
   };
