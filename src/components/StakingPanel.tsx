@@ -224,7 +224,7 @@ export const StakingPanel: React.FC = () => {
       </Card>
 
       {/* Stake / Unstake */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 0 }}>
         <Card title="Stake">
           <Input
             label={`수량 (${String(symbol) ?? ''})`}
@@ -279,7 +279,7 @@ export const StakingPanel: React.FC = () => {
             보상 수령(finalizeReward)
           </Button>
           <p style={{ fontSize: 12, color: 'var(--subtext)', marginTop: 8 }}>
-            * finalizeReward는 토큰 <code>mint</code>로 보상을 지급합니다. Paused 상태에서도 가능합니다.
+            * finalizeReward는 토큰 <code>mint</code>로 보상을 지급합니다.
           </p>
         </div>
       </Card>
